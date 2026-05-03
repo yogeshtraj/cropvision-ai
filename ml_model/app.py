@@ -26,12 +26,8 @@ print(f"Model loaded: {model is not None}")
 print(f"Label encoder loaded: {label_encoder is not None}")
 print(f"Season encoder loaded: {season_encoder is not None}")
 
-# SHAP explainer – wrapped in try-except to prevent app crash if SHAP fails
-try:
-    explainer = shap.Explainer(model) if model else None
-except Exception as e:
-    print(f"SHAP Explainer error: {e}")
-    explainer = None
+# SHAP explainer – DISABLED temporarily to prevent crash
+explainer = None
 
 # Determine the feature order expected by the model
 if model and hasattr(model, 'feature_names_in_'):
