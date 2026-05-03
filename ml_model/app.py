@@ -26,8 +26,12 @@ print(f"Model loaded: {model is not None}")
 print(f"Label encoder loaded: {label_encoder is not None}")
 print(f"Season encoder loaded: {season_encoder is not None}")
 
-# SHAP explainer – created once the model is loaded
-explainer = shap.TreeExplainer(model) if model else None
+# SHAP explainer – wrapped in try-except to prevent app crash if SHAP fails
+try:
+    explainer = shap.Explainer(model) if model else None
+except Exception as e:
+    print(f"SHAP Explainer error: {e}")
+    explainer = None
 
 # Determine the feature order expected by the model
 if model and hasattr(model, 'feature_names_in_'):
@@ -113,18 +117,26 @@ def predict():
         crop_name = label_encoder.inverse_transform([pred_class])[0]
         
         # SHAP explanation
-        shap_vals = explainer.shap_values(df)
-        
-        if len(shap_vals.shape) == 3:
-            shap_row = shap_vals[0, :, int(pred_class)]
-        else:
-            shap_row = shap_vals[0]
-            
-        shap_dict = dict(zip(EXPECTED_FEATURES, shap_row))
-        top_features = sorted(shap_dict.items(), key=lambda kv: abs(kv[1]), reverse=True)[:3]
-        
-        explanation = {feat: round(float(val), 4) for feat, val in top_features}
-        
+        explanation = {}
+        if explainer:
+            try:
+                shap_vals = explainer(df)
+                # For multiclass, shap_vals is usually (n_samples, n_features, n_classes)
+                # or a list of arrays.
+                if isinstance(shap_vals, list):
+                    shap_row = shap_vals[int(pred_class)].values[0]
+                elif len(shap_vals.shape) == 3:
+                    shap_row = shap_vals.values[0, :, int(pred_class)]
+                else:
+                    shap_row = shap_vals.values[0]
+                    
+                shap_dict = dict(zip(EXPECTED_FEATURES, shap_row))
+                top_features = sorted(shap_dict.items(), key=lambda kv: abs(kv[1]), reverse=True)[:3]
+                explanation = {feat: round(float(val), 4) for feat, val in top_features}
+            except Exception as e:
+                print(f"SHAP calculation error: {e}")
+                explanation = {"error": "Could not generate explanation"}
+
         return jsonify({
             "crop": str(crop_name),
             "confidence": round(float(confidence), 4),
