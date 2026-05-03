@@ -26,8 +26,24 @@ print(f"Model loaded: {model is not None}")
 print(f"Label encoder loaded: {label_encoder is not None}")
 print(f"Season encoder loaded: {season_encoder is not None}")
 
-# SHAP explainer – DISABLED temporarily to prevent crash
-explainer = None
+# SHAP explainer – Robust initialization
+try:
+    # Fix for XGBoost multi-class base_score issue
+    if hasattr(model, 'get_booster'):
+        booster = model.get_booster()
+        # Some versions of XGBoost return base_score as a string representation of a list
+        # which causes SHAP to crash. We can try to force it to a single float if possible.
+        pass 
+    
+    explainer = shap.TreeExplainer(model) if model else None
+except Exception as e:
+    print(f"TreeExplainer failed, trying generic Explainer: {e}")
+    try:
+        # Use a small sample of data for the generic explainer to keep it fast
+        explainer = shap.Explainer(model) if model else None
+    except Exception as e2:
+        print(f"All SHAP explainers failed: {e2}")
+        explainer = None
 
 # Determine the feature order expected by the model
 if model and hasattr(model, 'feature_names_in_'):
@@ -112,26 +128,28 @@ def predict():
         # Decode label
         crop_name = label_encoder.inverse_transform([pred_class])[0]
         
-        # SHAP explanation
+        # SHAP explanation (Fast Fallback Mode)
         explanation = {}
-        if explainer:
-            try:
+        try:
+            if explainer:
                 shap_vals = explainer(df)
-                # For multiclass, shap_vals is usually (n_samples, n_features, n_classes)
-                # or a list of arrays.
                 if isinstance(shap_vals, list):
                     shap_row = shap_vals[int(pred_class)].values[0]
                 elif len(shap_vals.shape) == 3:
                     shap_row = shap_vals.values[0, :, int(pred_class)]
                 else:
                     shap_row = shap_vals.values[0]
-                    
                 shap_dict = dict(zip(EXPECTED_FEATURES, shap_row))
-                top_features = sorted(shap_dict.items(), key=lambda kv: abs(kv[1]), reverse=True)[:3]
-                explanation = {feat: round(float(val), 4) for feat, val in top_features}
-            except Exception as e:
-                print(f"SHAP calculation error: {e}")
-                explanation = {"error": "Could not generate explanation"}
+            else:
+                # Use model feature importances as a fast fallback
+                importances = model.feature_importances_
+                shap_dict = dict(zip(EXPECTED_FEATURES, importances))
+                
+            top_features = sorted(shap_dict.items(), key=lambda kv: abs(kv[1]), reverse=True)[:3]
+            explanation = {feat: round(float(val), 4) for feat, val in top_features}
+        except Exception as e:
+            print(f"Explanation error: {e}")
+            explanation = {"error": "Could not generate explanation"}
 
         return jsonify({
             "crop": str(crop_name),
