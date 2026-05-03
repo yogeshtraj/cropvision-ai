@@ -78,17 +78,19 @@ router.get('/weather', async (req, res) => {
             // Broad fallback chain — covers metros, towns, rural areas across India
             city = addr.city
                 || addr.town
-                || addr.municipality
-                || addr.city_district
-                || addr.suburb
                 || addr.village
                 || addr.hamlet
+                || addr.suburb
+                || addr.neighbourhood
+                || addr.city_district
+                || addr.district
                 || addr.county
                 || addr.state_district
+                || addr.municipality
                 || addr.state
-                || 'Your Location';
+                || 'Current Location';
             country = (addr.country_code || 'in').toUpperCase();
-            console.log(`[Geocode] city resolved as: "${city}" from addr keys: ${Object.keys(addr).join(', ')}`);
+            console.log(`[Geocode] resolved: "${city}" from ${Object.keys(addr).join(',')}`);
         } catch (geoErr) {
             console.warn('[Geocode] Reverse geocoding failed:', geoErr.message);
         }
